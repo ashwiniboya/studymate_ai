@@ -1,0 +1,15 @@
+[project]
+name = "studymate-ai"
+version = "1.0.0"
+description = "AI-powered study assistant with Google ADK agents"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

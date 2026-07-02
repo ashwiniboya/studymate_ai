@@ -1,36 +1,38 @@
-"""Database session management."""
+"""Embedding generation for RAG using Gemini text-embedding-004."""
 
-from collections.abc import Generator
-
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+import hashlib
+import random
 
 from app.config import settings
-from app.database.models import Base
 
-_db_url = settings.runtime_database_url
-
-# connect_args only needed for SQLite (local dev)
-_connect_args = {"check_same_thread": False} if _db_url.startswith("sqlite") else {}
-
-engine = create_engine(
-    _db_url,
-    connect_args=_connect_args,
-    # Postgres needs a connection pool; SQLite doesn't
-    pool_pre_ping=True if not _db_url.startswith("sqlite") else False,
-)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+EMBEDDING_DIMS = 768
 
 
-def init_db() -> None:
-    """Create all database tables."""
-    Base.metadata.create_all(bind=engine)
+def _gemini_embed_texts(texts: list[str]) -> list[list[float]]:
+    from google import genai
+    client = genai.Client(api_key=settings.google_api_key)
+    result = client.models.embed_content(
+        model=settings.embedding_model,
+        contents=texts,
+    )
+    return [e.values for e in result.embeddings]
 
 
-def get_db() -> Generator[Session, None, None]:
-    """Yield a database session for dependency injection."""
-    db = SessionLocal()
+def _fallback_embedding(text: str, dims: int = EMBEDDING_DIMS) -> list[float]:
+    seed = int(hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest(), 16) % (2**32)
+    rng = random.Random(seed)
+    return [rng.uniform(-1.0, 1.0) for _ in range(dims)]
+
+
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    if not texts:
+        return []
     try:
-        yield db
-    finally:
-        db.close()
+        return _gemini_embed_texts(texts)
+    except Exception as e:
+        print(f"[embeddings] Gemini API failed, using fallback: {e}")
+        return [_fallback_embedding(t) for t in texts]
+
+
+def embed_query(query: str) -> list[float]:
+    return embed_texts([query])[0]

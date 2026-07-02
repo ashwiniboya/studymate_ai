@@ -1,4 +1,4 @@
-"""ChromaDB vector store for document retrieval."""
+"""ChromaDB vector store — uses Chroma Cloud on Vercel, local PersistentClient in dev."""
 
 from typing import Any
 
@@ -12,14 +12,30 @@ from app.rag.embeddings import embed_query, embed_texts
 COLLECTION_NAME = "studymate_documents"
 
 
+def _make_chroma_client() -> chromadb.ClientAPI:
+    """Return a Chroma Cloud client if credentials are set, else local persistent client."""
+    if settings.use_chroma_cloud:
+        return chromadb.HttpClient(
+            host="api.trychroma.com",
+            ssl=True,
+            port=443,
+            headers={"x-chroma-token": settings.chroma_api_key},
+            tenant=settings.chroma_tenant,
+            database=settings.chroma_database,
+            settings=ChromaSettings(anonymized_telemetry=False),
+        )
+    # Local development fallback
+    return chromadb.PersistentClient(
+        path=str(settings.chroma_path),
+        settings=ChromaSettings(anonymized_telemetry=False),
+    )
+
+
 class VectorStore:
     """Manages document chunks in ChromaDB for semantic search."""
 
     def __init__(self) -> None:
-        self._client = chromadb.PersistentClient(
-            path=str(settings.chroma_path),
-            settings=ChromaSettings(anonymized_telemetry=False),
-        )
+        self._client = _make_chroma_client()
         self._collection = self._client.get_or_create_collection(
             name=COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"},
